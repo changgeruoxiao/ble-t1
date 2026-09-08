@@ -39,14 +39,18 @@ Nordic nRF Connect SDK
 1. nRF Connect SDK / 工具链可用 ✅
 2. GPIO / 板载 LED bring-up ✅
 3. BLE advertising + Sniffer 空口验证 ✅
-4. BLE connection + GATT read/write ← **当前阶段**
-5. Notification
+4. BLE connection + GATT read/write ✅
+5. Notification ← **当前阶段**
 6. Sniffer 深入分析连接、ATT/GATT、notification
 7. 后续接入传感器并形成无线传感节点
 
-当前任务：[`TASKS/003-gatt-read-write.md`](TASKS/003-gatt-read-write.md)。
+当前任务：[`TASKS/004-notification.md`](TASKS/004-notification.md)。
 
-当前 GATT 协议说明：[`docs/gatt.md`](docs/gatt.md)。
+协议说明：
+
+- [`docs/gatt.md`](docs/gatt.md)
+- [`docs/notification.md`](docs/notification.md)
+- [`docs/sniffer.md`](docs/sniffer.md)
 
 项目实机状态与本机环境记录：[`docs/project-status.md`](docs/project-status.md)。
 
@@ -58,16 +62,17 @@ Nordic nRF Connect SDK
 ble-t1
 ```
 
-Task 003 自定义 Primary Service：
+自定义 Primary Service：
 
 ```text
 7c7c0001-6e6f-4f72-9c5c-7a1b3d0e2f10
 ```
 
-Task 003 自定义 Read/Write Characteristic：
+Task 003 control/value Characteristic：
 
 ```text
 7c7c0002-6e6f-4f72-9c5c-7a1b3d0e2f10
+READ | WRITE
 ```
 
 上电初始值：
@@ -76,10 +81,29 @@ Task 003 自定义 Read/Write Characteristic：
 hello
 ```
 
-Task 003 广播识别标记：
+Task 004 telemetry Characteristic：
 
 ```text
-FF FF 42 54 31 03
+7c7c0003-6e6f-4f72-9c5c-7a1b3d0e2f10
+READ | NOTIFY
+```
+
+Task 004 notification payload：
+
+```text
+4-byte little-endian uint32 counter
+01 00 00 00
+02 00 00 00
+03 00 00 00
+...
+```
+
+发送周期约 1 秒；仅在 central 启用 CCCD notification 后发送。
+
+Task 004 广播识别标记：
+
+```text
+FF FF 42 54 31 04
 ```
 
 ## Build
@@ -113,9 +137,12 @@ build/zephyr/zephyr.uf2
 - `AGENTS.md`
 - `docs/project-status.md`
 - `docs/gatt.md`
+- `docs/notification.md`
 - `docs/sniffer.md`
-- `TASKS/003-gatt-read-write.md`
+- `TASKS/004-notification.md`
 
-然后使用已经验证的 Nordic nRF Connect SDK v3.4.0 环境进行实际构建、UF2 刷写和 BLE 实机验证。
+然后使用已经验证的 Nordic nRF Connect SDK v3.4.0 环境进行实际构建、UF2 刷写和 BLE notification 实机验证。
 
-不要修改或擦除 UF2 Bootloader；不要使用 SWD mass erase；Task 003 完成前不要提前加入 notification。
+云端没有实际 NCS 工具链和物理 USB/BLE 设备，因此 Task 004 当前只标记为“代码已准备”；只有本地编译和实物订阅验证完成后才能标记为完成。
+
+不要修改或擦除 UF2 Bootloader；不要使用 SWD mass erase；Task 004 完成前不要提前接入真实传感器或扩展成复杂生产协议。
