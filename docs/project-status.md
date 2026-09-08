@@ -6,7 +6,9 @@
 
 Task 001 已完成：工程可以使用 Nordic nRF Connect SDK 构建目标板 UF2，UF2 已通过 `NICENANO` Bootloader 刷入实物开发板，板载 LED 呼吸灯工作正常。
 
-Task 002 的 BLE advertising 目标已完成：本地构建、UF2 刷写、手机扫描和 Sniffer 命令行空口验证均有记录。应用板和 Sniffer 均被 Windows 识别，手机已看到设备名 `ble-t1`，`ble-sniffer` 已抓到包含 `BT1` 标记的广播数据。按照任务验收要求，刷入 Task 002 固件后的 LED 再次视觉复核仍待补充；Wireshark GUI 验证是可选项，不影响命令行抓包结论。
+Task 002 的 BLE advertising 目标已完成：本地构建、UF2 刷写、手机扫描和 Sniffer 命令行空口验证均有记录。应用板和 Sniffer 均被 Windows 识别，手机已看到设备名 `ble-t1`，`ble-sniffer` 已抓到包含 `BT1` 标记的广播数据。Task 002 固件后的 LED 再次视觉复核仍可补充；Wireshark GUI 验证是可选项，不影响命令行抓包结论。
+
+Task 003 已由云端先完成代码准备，但**尚未完成本地构建与实物验证**：仓库已加入自定义 GATT Service、一个可读写 Characteristic、连接回调和 Task 003 协议/验收文档。下一步由本地 Agent 拉取后完成 NCS v3.4.0 构建、UF2 刷写、手机/PC 连接、GATT read/write 验证，并按需要扩展 Sniffer 到连接与 ATT 层。
 
 ## 本机开发环境
 
@@ -60,18 +62,18 @@ west build -b promicro_nrf52840/nrf52840/uf2 . -p always --no-sysbuild
 - 产物：`build/zephyr/zephyr.uf2`。
 - 呼吸灯版本已完成实物刷写并验证。
 
-## Task 002：BLE advertising 已完成，LED 回归观察待补
+## Task 002：BLE advertising 已完成
 
-云端已先完成以下改动：
+云端先完成：
 
 - `prj.conf` 开启 Bluetooth Peripheral 支持，设备名固定为 `ble-t1`。
 - `src/main.c` 在保留呼吸灯的同时执行 `bt_enable()` 并启动 legacy connectable/scannable advertising。
 - 广播/扫描响应中提供 `ble-t1` 设备名。
-- 广播数据加入实验识别字节：`FF FF 42 54 31 02`，其中包含 ASCII `BT1` 和实验版本 `02`。
+- Task 002 广播实验识别字节：`FF FF 42 54 31 02`。
 - 新增 [TASKS/002-ble-advertising.md](../TASKS/002-ble-advertising.md)。
-- 新增 [docs/sniffer.md](sniffer.md)，记录 nRF Util + Wireshark 抓包流程和第三方 sniffer 固件兼容性检查边界。
+- 新增 [docs/sniffer.md](sniffer.md)。
 
-本地 Agent 使用 NCS v3.4.0 构建时未修改这部分代码，构建命令为：
+本地 Agent 使用 NCS v3.4.0 构建时未修改上述 BLE 代码：
 
 ```text
 west build -b promicro_nrf52840/nrf52840/uf2 . -p always --no-sysbuild
@@ -85,21 +87,49 @@ Sniffer 命令行验证结果：
 - `COM15` 握手成功，Sniffer 固件版本为 `4.1.1`，持续收到 BLE 数据包。
 - 捕获文件保存在本机临时目录：`C:\Temp\ble-t1-task02-20260908-211309.pcap`，未提交到仓库。
 - PCAP 原始数据中检出完整连续字节 `FF FF 42 54 31 02` 共 1,739 次，确认空口已看到本项目广播。
-- Wireshark 未安装在默认路径，`nrfutil ble-sniffer bootstrap` 因找不到 `C:\Program Files\Wireshark\Wireshark.exe` 未完成；这不影响上述命令行捕获。
-- 首次命令行捕获未独立解析出完整名称 `ble-t1`，因此不把 Sniffer 的设备名字段当作手机/PC 扫描器验证结果。
 - 用户已用手机蓝牙扫描确认设备名为 `ble-t1`。
-- 为后续自动化准备的 `bleak 3.0.2` 已安装到本机 Python 3.12.9；尝试扫描时发现 Windows 主机蓝牙适配器处于关闭状态，因此未将该次扫描作为 Task 002 验收证据。
+- Wireshark GUI 尚未作为 Task 002 的必要验收项。
 
-### 剩余观察项
+## Task 003：GATT read/write 已准备，待本地 Agent 验证
 
-1. 观察本次 Task 002 固件刷写后 LED 是否仍然呼吸，并补充记录。
-2. 如需 Wireshark 图形界面证据，安装 Wireshark 后重新执行 `nrfutil ble-sniffer bootstrap`；该项为可选，不影响当前命令行抓包结果。
+云端已新增：
 
-命令行已抓到带项目标记的 advertising 数据；完成 LED 回归观察后，再进入 Task 003：连接 + 最小 GATT characteristic。
+- 自定义 Primary Service UUID：`7c7c0001-6e6f-4f72-9c5c-7a1b3d0e2f10`。
+- 自定义 Value Characteristic UUID：`7c7c0002-6e6f-4f72-9c5c-7a1b3d0e2f10`。
+- Characteristic 支持 `READ | WRITE`，最大 20 字节 RAM 数据。
+- 上电初始值：ASCII `hello`。
+- 完整写入后可立即读回；本阶段拒绝 prepared write 和 offset write，保持 ATT 行为简单可观察。
+- 注册连接/断开回调，并输出最小 `printk` 日志。
+- 广播数据加入自定义 Service UUID。
+- 广播实验标记升级为 `FF FF 42 54 31 03`。
+- 保留 Task 001 的 PWM 呼吸灯。
+- 新增 [docs/gatt.md](gatt.md)。
+- 新增 [TASKS/003-gatt-read-write.md](../TASKS/003-gatt-read-write.md)。
+
+云端**未声称 Task 003 已编译或实机通过**。本地 Agent 下一步应：
+
+1. `git pull`；
+2. 阅读 `AGENTS.md`、`docs/gatt.md`、`TASKS/003-gatt-read-write.md`；
+3. 使用 NCS v3.4.0 执行：
+
+```text
+west build -b promicro_nrf52840/nrf52840/uf2 . -p always --no-sysbuild
+```
+
+4. 若编译失败，仅做必要兼容修复并记录原因；
+5. 通过 `NICENANO` 刷入 UF2；
+6. 手机/PC 连接 `ble-t1` 并发现自定义 Service/Characteristic；
+7. 读取 `hello`；
+8. 写入例如 `task03`，再读回确认；
+9. 验证断开重连后的 RAM 值，以及复位后恢复 `hello`；
+10. 按需要用 Packet Sniffer 捕获连接/ATT read/write；
+11. 更新本页并提交推送。
+
+Task 003 完成前，不加入 notification。
 
 ## 后续计划
 
-1. Task 003：建立 BLE 连接并添加最小 GATT characteristic。
+1. Task 003：完成本地 GATT read/write 实机验证。
 2. Task 004：增加 notification，并用手机或上位机验证数据流。
 3. Task 005：扩展 Sniffer 分析到连接事件、ATT/GATT 和 notification。
 4. 后续接入传感器，形成无线传感节点。
