@@ -1,22 +1,42 @@
-# Task 001 — nRF52840 board bring-up
+# Task 001 — nRF52840 board bring-up with nRF Connect SDK
 
 ## Objective
 
-Create the minimum Zephyr application for this repository and verify that it can be built for:
+Create the minimum **Nordic nRF Connect SDK (NCS)** application for this repository and verify that the installed NCS can build it for the physical ProMicro / SuperMini nRF52840 board.
+
+Candidate board target:
 
 ```text
 promicro_nrf52840/nrf52840/uf2
 ```
 
-The first hardware behavior should be a simple board LED blink if the board definition exposes a usable `led0` alias. If the clone board LED mapping differs, determine the actual mapping without modifying the SDK itself.
+The local Agent must verify that this target actually exists in the installed NCS before using it.
+
+The first hardware behavior should be a simple board LED blink if the board definition exposes a usable `led0` alias. If the clone board LED mapping differs, determine the actual mapping without modifying SDK sources.
+
+## SDK requirement
+
+Use **Nordic nRF Connect SDK**, not a separately installed upstream Zephyr environment.
+
+Zephyr APIs, Devicetree, Kconfig, west and CMake are expected because they are part of the NCS development model.
+
+Before implementation, identify and report:
+
+- nRF Connect SDK version;
+- active toolchain version/location where practical;
+- `west --version`;
+- whether `promicro_nrf52840/nrf52840/uf2` is available in that NCS installation.
+
+If only standalone upstream Zephyr is present, do not silently proceed with it. Report that NCS is missing and propose the minimal installation/setup step.
 
 ## Constraints
 
 - Keep the current Nice!Nano-compatible UF2 bootloader intact.
 - Do not use SWD mass erase.
-- Do not modify Zephyr / nRF Connect SDK source files outside this repository.
+- Do not modify nRF Connect SDK / Zephyr source files outside this repository.
 - Do not start BLE yet.
 - Do not add unrelated libraries or framework layers.
+- Do not switch to legacy nRF5 SDK, Arduino or PlatformIO.
 
 ## Required implementation
 
@@ -32,11 +52,11 @@ docs/board-notes.md
 
 ### `src/main.c`
 
-Implement a minimal blink loop using Zephyr GPIO APIs and the board's devicetree LED alias when available.
+Implement a minimal blink loop using Zephyr GPIO APIs and the board's Devicetree LED alias when available.
 
 Requirements:
 
-- use devicetree rather than hard-coding a GPIO number as the first choice;
+- use Devicetree rather than hard-coding a GPIO number as the first choice;
 - fail clearly at compile time or initialization time if the LED alias is unavailable;
 - toggle about every 500 ms;
 - keep code intentionally small and readable.
@@ -52,29 +72,32 @@ Record:
 - board model: ProMicro / SuperMini nRF52840 clone;
 - SoC: nRF52840;
 - bootloader volume observed by user: `NICENANO`;
-- preferred board target;
+- NCS version used;
+- board target actually used;
 - known/reset entry method: two quick `RST -> GND` resets;
 - actual LED mapping found during implementation/validation;
-- any mismatch between upstream board definition and this physical clone.
+- any mismatch between the NCS/Zephyr board definition and this physical clone.
+
+Also read [`docs/references.md`](../docs/references.md) before making board-specific assumptions.
 
 ## Local environment inspection
 
-Before implementing, inspect:
+Use commands appropriate for the installed Nordic environment. At minimum inspect:
 
 ```bash
 west --version
 west boards | grep -i promicro
 ```
 
-or equivalent commands supported by the installed SDK.
+or the PowerShell equivalent on Windows.
 
-Also print/record the Zephyr or nRF Connect SDK version being used.
+Also determine the nRF Connect SDK version from the active SDK installation/workspace rather than merely reporting the Zephyr version.
 
-If `promicro_nrf52840/nrf52840/uf2` does not exist in the installed SDK, do not silently switch board targets. Report the mismatch and identify the least invasive compatible solution.
+If `promicro_nrf52840/nrf52840/uf2` does not exist in the installed NCS, do not silently switch board targets. Report the mismatch and identify the least invasive compatible solution, such as a repository-local board definition/overlay when appropriate.
 
 ## Build
 
-From repository root:
+After the target is confirmed, from repository root:
 
 ```bash
 west build -b promicro_nrf52840/nrf52840/uf2 . -p always
@@ -102,7 +125,9 @@ Do not mark hardware validation complete until the user reports the physical res
 
 When done, summarize:
 
-- SDK/version detected;
+- nRF Connect SDK version detected;
+- toolchain/version information detected;
+- board target verification result;
 - files created/changed;
 - exact build command;
 - build result;
