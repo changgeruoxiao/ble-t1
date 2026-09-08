@@ -2,22 +2,45 @@
 
 nRF52840 / Bluetooth LE 学习与实验工程。
 
+## Development stack
+
+本项目的主开发栈明确为 **Nordic nRF Connect SDK (NCS)**。
+
+关系如下：
+
+```text
+Nordic nRF Connect SDK
+├── Zephyr RTOS / device model
+├── Nordic nrfx / nrfxlib
+├── Nordic Bluetooth controller and libraries
+├── MCUboot and related components
+└── west / CMake / Kconfig / Devicetree tooling
+```
+
+因此，本仓库会使用 Zephyr 的应用结构和 `west` 构建命令，但目标不是单独搭建 upstream Zephyr 环境，而是优先使用 **Nordic 官方 nRF Connect SDK + Nordic toolchain**。
+
+除非任务明确要求，否则不要切换到旧版 nRF5 SDK、Arduino、PlatformIO 或独立 upstream Zephyr。
+
 ## Hardware
 
 - Board: ProMicro / SuperMini nRF52840（Nice!Nano 兼容 UF2 Bootloader）
 - SoC: Nordic nRF52840
-- Bootloader volume: `NICENANO`
-- Preferred Zephyr board target: `promicro_nrf52840/nrf52840/uf2`
+- Bootloader volume observed on Windows: `NICENANO`
+- Candidate board target: `promicro_nrf52840/nrf52840/uf2`
 - Packet capture: nRF52840 BLE Packet Sniffer + Wireshark（后续阶段）
 - SWD: 暂不作为首选烧录方式；先使用 UF2
 
-Zephyr 当前文档已提供 `promicro_nrf52840/nrf52840/uf2` target。进入 UF2 Bootloader 的方式是快速两次复位，随后将生成的 `build/zephyr/zephyr.uf2` 写入 `NICENANO` 盘。
+> 注意：`promicro_nrf52840/nrf52840/uf2` 必须由本地 Agent 在实际安装的 nRF Connect SDK 中确认存在后再使用，不要因为文档中写了该名称就假定所有 NCS 版本都包含它。
+
+进入 UF2 Bootloader 的已验证方式：快速两次 `RST -> GND`，Windows 会出现 `NICENANO` U 盘。生成的 `build/zephyr/zephyr.uf2` 可直接复制到该盘进行烧录。
+
+硬件与官方资料入口统一记录在 [`docs/references.md`](docs/references.md)。
 
 ## Project goal
 
 按可验证的小阶段学习 nRF52840 和 BLE：
 
-1. 工程/工具链可构建
+1. nRF Connect SDK / 工具链可用
 2. GPIO / 板载 LED bring-up
 3. BLE advertising
 4. BLE connection + GATT characteristic
@@ -29,11 +52,13 @@ Zephyr 当前文档已提供 `promicro_nrf52840/nrf52840/uf2` target。进入 UF
 
 ## Build
 
-在已经激活 Zephyr 或 nRF Connect SDK 环境的终端中，从仓库根目录执行：
+在已经激活 **nRF Connect SDK** 环境的终端中，从仓库根目录执行：
 
 ```bash
 west build -b promicro_nrf52840/nrf52840/uf2 . -p always
 ```
+
+前提是本地安装的 NCS 已确认支持该 board target。
 
 成功后重点产物：
 
@@ -61,5 +86,8 @@ west flash
 
 - `AGENTS.md`
 - `TASKS/001-bringup.md`
+- `docs/references.md`
 
-然后让它在本地检查工具链、实现、构建和修复；不要一开始改 Bootloader，也不要使用 SWD mass erase。
+然后让它在本地检查 **Nordic nRF Connect SDK / toolchain**、目标板支持情况，再实现、构建和修复。
+
+初始阶段不要改 Bootloader，也不要使用 SWD mass erase。
