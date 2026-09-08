@@ -8,7 +8,7 @@ Task 001 已完成：工程可以使用 Nordic nRF Connect SDK 构建目标板 U
 
 Task 002 的 BLE advertising 目标已完成：本地构建、UF2 刷写、手机扫描和 Sniffer 命令行空口验证均有记录。应用板和 Sniffer 均被 Windows 识别，手机已看到设备名 `ble-t1`，`ble-sniffer` 已抓到包含 `BT1` 标记的广播数据。Task 002 固件后的 LED 再次视觉复核仍可补充；Wireshark GUI 验证是可选项，不影响命令行抓包结论。
 
-Task 003 已由云端先完成代码准备，但**尚未完成本地构建与实物验证**：仓库已加入自定义 GATT Service、一个可读写 Characteristic、连接回调和 Task 003 协议/验收文档。下一步由本地 Agent 拉取后完成 NCS v3.4.0 构建、UF2 刷写、手机/PC 连接、GATT read/write 验证，并按需要扩展 Sniffer 到连接与 ATT 层。
+Task 003 已完成本地构建和实物验证：`ble-t1` 可连接并发现自定义 GATT Service/Characteristic，初始值 `hello` 可读，写入 `task03` 后可读回，断开重连后 RAM 值保持，复位后恢复为 `hello`。最终固件刷写后用户确认呼吸灯仍正常工作。
 
 ## 本机开发环境
 
@@ -90,7 +90,7 @@ Sniffer 命令行验证结果：
 - 用户已用手机蓝牙扫描确认设备名为 `ble-t1`。
 - Wireshark GUI 尚未作为 Task 002 的必要验收项。
 
-## Task 003：GATT read/write 已准备，待本地 Agent 验证
+## Task 003：GATT read/write 已完成
 
 云端已新增：
 
@@ -106,32 +106,32 @@ Sniffer 命令行验证结果：
 - 新增 [docs/gatt.md](gatt.md)。
 - 新增 [TASKS/003-gatt-read-write.md](../TASKS/003-gatt-read-write.md)。
 
-云端**未声称 Task 003 已编译或实机通过**。本地 Agent 下一步应：
-
-1. `git pull`；
-2. 阅读 `AGENTS.md`、`docs/gatt.md`、`TASKS/003-gatt-read-write.md`；
-3. 使用 NCS v3.4.0 执行：
+本地构建与刷写结果：
 
 ```text
 west build -b promicro_nrf52840/nrf52840/uf2 . -p always --no-sysbuild
 ```
 
-4. 若编译失败，仅做必要兼容修复并记录原因；
-5. 通过 `NICENANO` 刷入 UF2；
-6. 手机/PC 连接 `ble-t1` 并发现自定义 Service/Characteristic；
-7. 读取 `hello`；
-8. 写入例如 `task03`，再读回确认；
-9. 验证断开重连后的 RAM 值，以及复位后恢复 `hello`；
-10. 按需要用 Packet Sniffer 捕获连接/ATT read/write；
-11. 更新本页并提交推送。
+- 使用 NCS v3.4.0 构建，最终构建退出码为 `0`，Task 003 的 GATT 代码仅做了一处必要功能修复：将断开后的广播重启从 `disconnected` 回调移到连接对象已回收的 `.recycled` 回调。
+- 构建过程中曾因当前终端将 `C:\orelse\develop\tools\Lib` 混入 NCS Python 路径而触发 `ctypes` 错配；通过当前构建进程设置 `PYTHONHOME=C:\ncs\toolchains\dcbdc366a1\opt\bin` 解决，未修改 NCS/Zephyr 文件。
+- 生成的 UF2 为 `C:\Users\27417\Desktop\prepre\ble-t1\build\zephyr\zephyr.uf2`，大小为 `269,312` 字节。
+- 最终 UF2 已通过 `NICENANO` 刷写，刷写后 Bootloader 盘自动断开；用户确认最终固件的呼吸灯正常。
 
-Task 003 完成前，不加入 notification。
+自动化 GATT 验证结果（Python `bleak 3.0.2`）：
+
+- 扫描发现并连接 `ble-t1`；本次随机地址为 `E6:CE:8F:F4:7F:F5`，不作为永久设备标识。
+- 发现 Primary Service：`7c7c0001-6e6f-4f72-9c5c-7a1b3d0e2f10`。
+- 发现 Characteristic：`7c7c0002-6e6f-4f72-9c5c-7a1b3d0e2f10`，属性为 `Read`、`Write`。
+- 复位后首次读取：`68 65 6c 6c 6f`（ASCII `hello`）。
+- 写入：`74 61 73 6B 30 33`（ASCII `task03`）；立即读回一致。
+- 断开后重新发现并连接成功，读取仍为 `task03`，确认 RAM 值跨断开/重连保持。
+- 再次通过 UF2 刷写触发复位后，重新连接读取为 `hello`，确认复位恢复初始值。
+- Task 003 未增加 notification；Sniffer 连接/ATT 抓包为可选项，本次未执行，不影响 GATT 功能验收。
 
 ## 后续计划
 
-1. Task 003：完成本地 GATT read/write 实机验证。
-2. Task 004：增加 notification，并用手机或上位机验证数据流。
-3. Task 005：扩展 Sniffer 分析到连接事件、ATT/GATT 和 notification。
-4. 后续接入传感器，形成无线传感节点。
+1. Task 004：增加 notification，并用手机或上位机验证数据流。
+2. Task 005：扩展 Sniffer 分析到连接事件、ATT/GATT 和 notification。
+3. 后续接入传感器，形成无线传感节点。
 
 继续保持边界：不改变 UF2 Bootloader，不使用 SWD mass erase，也不引入 Arduino、PlatformIO 或 legacy nRF5 SDK，除非后续任务明确要求。

@@ -75,6 +75,8 @@ BT_GATT_SERVICE_DEFINE(ble_t1_service,
 			       read_gatt_value, write_gatt_value, NULL),
 );
 
+static int start_advertising(void);
+
 static void connected(struct bt_conn *conn, uint8_t err)
 {
 	ARG_UNUSED(conn);
@@ -93,9 +95,21 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 	printk("Disconnected (reason 0x%02x)\n", reason);
 }
 
+static void recycled(void)
+{
+	int err = start_advertising();
+
+	if (err) {
+		printk("Advertising restart failed (err %d)\n", err);
+	} else {
+		printk("Advertising restarted\n");
+	}
+}
+
 BT_CONN_CB_DEFINE(conn_callbacks) = {
 	.connected = connected,
 	.disconnected = disconnected,
+	.recycled = recycled,
 };
 
 /* 0xFFFF is used here only as a lab/test manufacturer identifier. */
@@ -114,6 +128,13 @@ static const struct bt_data sd[] = {
 		sizeof(CONFIG_BT_DEVICE_NAME) - 1),
 };
 
+static int start_advertising(void)
+{
+	return bt_le_adv_start(BT_LE_ADV_CONN_FAST_1,
+			       ad, ARRAY_SIZE(ad),
+			       sd, ARRAY_SIZE(sd));
+}
+
 static int start_ble_advertising(void)
 {
 	int err = bt_enable(NULL);
@@ -125,9 +146,7 @@ static int start_ble_advertising(void)
 
 	printk("Bluetooth initialized\n");
 
-	err = bt_le_adv_start(BT_LE_ADV_CONN_FAST_1,
-			      ad, ARRAY_SIZE(ad),
-			      sd, ARRAY_SIZE(sd));
+	err = start_advertising();
 	if (err) {
 		printk("Advertising failed to start (err %d)\n", err);
 		return err;
