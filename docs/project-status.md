@@ -10,6 +10,8 @@ Task 002 的 BLE advertising 目标已完成：本地构建、UF2 刷写、手�
 
 Task 003 已完成本地构建和实物验证：`ble-t1` 可连接并发现自定义 GATT Service/Characteristic，初始值 `hello` 可读，写入 `task03` 后可读回，断开重连后 RAM 值保持，复位后恢复为 `hello`。最终固件刷写后用户确认呼吸灯仍正常工作。
 
+Task 004 已由云端完成代码和任务准备，但**尚未声称本地构建或实物通过**：在原 Service 内新增独立 `READ | NOTIFY` telemetry characteristic，订阅后通过 delayed work 约每 1 秒主动推送一个 4 字节 little-endian 递增计数。下一步由本地 Agent 拉取后完成 NCS v3.4.0 构建、UF2 刷写、订阅/退订/重订阅和断线重连验证。
+
 ## 本机开发环境
 
 | 项目 | 当前值 |
@@ -119,7 +121,7 @@ west build -b promicro_nrf52840/nrf52840/uf2 . -p always --no-sysbuild
 
 自动化 GATT 验证结果（Python `bleak 3.0.2`）：
 
-- 扫描发现并连接 `ble-t1`；本次随机地址为 `E6:CE:8F:F4:7F:F5`，不作为永久设备标识。
+- 扫描发现并连接 `ble-t1`；本次随机地址不作为永久设备标识。
 - 发现 Primary Service：`7c7c0001-6e6f-4f72-9c5c-7a1b3d0e2f10`。
 - 发现 Characteristic：`7c7c0002-6e6f-4f72-9c5c-7a1b3d0e2f10`，属性为 `Read`、`Write`。
 - 复位后首次读取：`68 65 6c 6c 6f`（ASCII `hello`）。
@@ -128,10 +130,39 @@ west build -b promicro_nrf52840/nrf52840/uf2 . -p always --no-sysbuild
 - 再次通过 UF2 刷写触发复位后，重新连接读取为 `hello`，确认复位恢复初始值。
 - Task 003 未增加 notification；Sniffer 连接/ATT 抓包为可选项，本次未执行，不影响 GATT 功能验收。
 
+## Task 004：Notification 已准备，待本地 Agent 验证
+
+云端已完成以下代码设计：
+
+- 保留 Task 003 `...0002` 的 `READ | WRITE` 行为，不把控制数据与推送数据混在一个 Characteristic。
+- 新增 telemetry Characteristic UUID：`7c7c0003-6e6f-4f72-9c5c-7a1b3d0e2f10`。
+- 新 Characteristic 属性为 `READ | NOTIFY`，并附加 CCCD。
+- 订阅后将计数器清零，并立即调度第一个 notification；随后约每 1 秒推送一次。
+- payload 固定为 4 字节 little-endian `uint32` 递增计数：`1, 2, 3, ...`。
+- 退订或断开连接后取消 delayed work；再次订阅时重新从 `1` 开始。
+- 使用 Zephyr delayed work，避免阻塞现有 PWM 呼吸灯循环。
+- 广播实验标记升级为 `FF FF 42 54 31 04`。
+- 新增 [docs/notification.md](notification.md)。
+- 新增 [TASKS/004-notification.md](../TASKS/004-notification.md)。
+
+云端**未声称上述 Task 004 代码已在 NCS v3.4.0 编译通过或实机通过**。本地 Agent 应按 Task 004 文档完成：
+
+1. `git pull`；
+2. 在已经验证的 NCS v3.4.0 环境执行构建；
+3. 如有编译/API 兼容问题，只做最小必要修复并记录；
+4. 通过 `NICENANO` 刷入 UF2，并确认呼吸灯无回归；
+5. 用 `bleak` 或手机发现 `...0003 [read, notify]`；
+6. 订阅并至少收集 5 个递增通知；
+7. 验证退订停止、重订阅从 `1` 重新开始；
+8. 验证断开/重连后仍能重新订阅；
+9. 更新本页并推送完成提交。
+
+Task 004 完成前，不接入真实传感器，也不把 4 字节计数器提前设计成复杂生产协议。
+
 ## 后续计划
 
-1. Task 004：增加 notification，并用手机或上位机验证数据流。
-2. Task 005：扩展 Sniffer 分析到连接事件、ATT/GATT 和 notification。
+1. Task 004：完成 Notification 本地构建和实机闭环。
+2. Task 005：扩展 Sniffer 分析到连接事件、CCCD、ATT/GATT 和 notification。
 3. 后续接入传感器，形成无线传感节点。
 
 继续保持边界：不改变 UF2 Bootloader，不使用 SWD mass erase，也不引入 Arduino、PlatformIO 或 legacy nRF5 SDK，除非后续任务明确要求。
