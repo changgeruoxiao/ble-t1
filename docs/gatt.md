@@ -1,6 +1,6 @@
 # ble-t1 GATT protocol notes
 
-This document records the custom Bluetooth LE GATT interface introduced in Task 003.
+This document records the custom Bluetooth LE GATT interface introduced in Task 003 and extended in Task 004.
 
 ## Service
 
@@ -32,8 +32,6 @@ Permissions:
 READ | WRITE
 ```
 
-No pairing, bonding, authentication, encryption, notification or indication is required in Task 003. Security and notification are intentionally deferred to later tasks.
-
 The characteristic stores up to 20 bytes in RAM.
 
 Initial value after reset:
@@ -42,7 +40,7 @@ Initial value after reset:
 hello
 ```
 
-A successful write replaces the entire current value. Offset writes and prepared writes are intentionally rejected in this first experiment so the ATT behavior stays easy to inspect.
+A successful write replaces the entire current value. Offset writes and prepared writes are intentionally rejected so the ATT behavior stays easy to inspect.
 
 Example:
 
@@ -54,12 +52,31 @@ read  -> 74 61 73 6b 30 33        ("task03")
 
 The value remains in RAM across BLE disconnect/reconnect, but a board reset restores `hello`.
 
-## Advertising marker for Task 003
+## Telemetry / notification characteristic
 
-Task 003 changes the lab manufacturer marker to:
+Task 004 adds a second characteristic dedicated to peripheral-to-central telemetry:
 
 ```text
-FF FF 42 54 31 03
+7c7c0003-6e6f-4f72-9c5c-7a1b3d0e2f10
+```
+
+Properties:
+
+```text
+READ | NOTIFY
+```
+
+The characteristic exposes a 4-byte little-endian `uint32` counter. A CCCD controls whether notifications are enabled. This keeps configuration/control (`...0002`) separate from streaming telemetry (`...0003`).
+
+Detailed Task 004 behavior is documented in [`notification.md`](notification.md).
+
+## Advertising marker
+
+The lab manufacturer marker tracks the current experiment revision:
+
+```text
+Task 003: FF FF 42 54 31 03
+Task 004: FF FF 42 54 31 04
 ```
 
 Interpretation:
@@ -67,36 +84,48 @@ Interpretation:
 ```text
 FF FF     lab/test company identifier only
 42 54 31  ASCII "BT1"
-03        experiment version 03
+03/04     experiment version
 ```
 
 The `0xFFFF` company identifier is not intended for production use.
 
 ## Connection behavior
 
-The application registers Zephyr/NCS connection callbacks and prints simple events:
+The application registers Zephyr/NCS connection callbacks and prints simple events such as:
 
 ```text
 Connected
 Disconnected (reason 0x..)
 GATT value written (N bytes)
+Notifications enabled
+Notification counter=N
+Notifications disabled
 ```
 
-These messages are useful for local serial/RTT inspection, but Task 003 acceptance is based primarily on successful BLE connection and characteristic read/write behavior.
+These messages are useful for local serial/RTT inspection, while acceptance is based primarily on real central-side BLE behavior.
 
-## Why this task is deliberately small
+## Current data-path model
 
-Task 003 establishes the minimum application data path:
+After Task 004 the service has two deliberately different application paths:
 
 ```text
-Central (phone/PC)
-        |
-        | ATT Read / ATT Write
-        v
-GATT characteristic
-        |
-        v
-20-byte RAM value on nRF52840
+Central
+  |
+  | ATT Read / ATT Write
+  v
+Value characteristic (...0002)
+  |
+  v
+20-byte RAM control/config value
+
+Peripheral delayed work
+  |
+  | GATT Notification
+  v
+Telemetry characteristic (...0003)
+  |
+  v
+Central subscription callback
 ```
 
-Task 004 will extend this same characteristic or a dedicated data characteristic with `NOTIFY`, which is closer to the data-upload model used by a wireless sensor node.
+This is the first project stage that resembles the common wireless sensor split between configuration and pushed telemetry.
