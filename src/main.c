@@ -1,3 +1,4 @@
+#include <stdbool.h>
 #include <string.h>
 
 #include <zephyr/bluetooth/bluetooth.h>
@@ -7,6 +8,7 @@
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/pwm.h>
 #include <zephyr/kernel.h>
+#include <zephyr/sys/byteorder.h>
 #include <zephyr/sys/printk.h>
 #include <zephyr/sys/util.h>
 
@@ -20,15 +22,23 @@
 	BT_UUID_128_ENCODE(0x7c7c0001, 0x6e6f, 0x4f72, 0x9c5c, 0x7a1b3d0e2f10)
 #define BT_UUID_BLE_T1_VALUE_VAL \
 	BT_UUID_128_ENCODE(0x7c7c0002, 0x6e6f, 0x4f72, 0x9c5c, 0x7a1b3d0e2f10)
+#define BT_UUID_BLE_T1_NOTIFY_VAL \
+	BT_UUID_128_ENCODE(0x7c7c0003, 0x6e6f, 0x4f72, 0x9c5c, 0x7a1b3d0e2f10)
 
 #define GATT_VALUE_MAX_LEN 20U
+#define NOTIFY_INTERVAL K_SECONDS(1)
+#define NOTIFY_VALUE_ATTR_INDEX 4U
 
 static const struct pwm_dt_spec led = PWM_DT_SPEC_GET(PWM_LED0_NODE);
 static const struct bt_uuid_128 ble_t1_service_uuid = BT_UUID_INIT_128(BT_UUID_BLE_T1_SERVICE_VAL);
 static const struct bt_uuid_128 ble_t1_value_uuid = BT_UUID_INIT_128(BT_UUID_BLE_T1_VALUE_VAL);
+static const struct bt_uuid_128 ble_t1_notify_uuid = BT_UUID_INIT_128(BT_UUID_BLE_T1_NOTIFY_VAL);
 
 static uint8_t gatt_value[GATT_VALUE_MAX_LEN] = "hello";
 static size_t gatt_value_len = 5U;
+static uint32_t notify_counter;
+static bool notify_enabled;
+static struct k_work_delayable notify_work;
 
 static ssize_t read_gatt_value(struct bt_conn *conn,
 			       const struct bt_gatt_attr *attr,
@@ -67,13 +77,73 @@ static ssize_t write_gatt_value(struct bt_conn *conn,
 	return len;
 }
 
+static ssize_t read_notify_counter(struct bt_conn *conn,
+				   const struct bt_gatt_attr *attr,
+				   void *buf, uint16_t len, uint16_t offset)
+{
+	uint32_t counter_le = sys_cpu_to_le32(notify_counter);
+
+	return bt_gatt_attr_read(conn, attr, buf, len, offset,
+				 &counter_le, sizeof(counter_le));
+}
+
+static void notify_ccc_changed(const struct bt_gatt_attr *attr, uint16_t value)
+{
+	ARG_UNUSED(attr);
+
+	notify_enabled = (value == BT_GATT_CCC_NOTIFY);
+
+	if (notify_enabled) {
+		notify_counter = 0U;
+		printk("Notifications enabled\n");
+		(void)k_work_reschedule(&notify_work, K_NO_WAIT);
+	} else {
+		printk("Notifications disabled\n");
+		(void)k_work_cancel_delayable(&notify_work);
+	}
+}
+
 BT_GATT_SERVICE_DEFINE(ble_t1_service,
 	BT_GATT_PRIMARY_SERVICE(&ble_t1_service_uuid.uuid),
 	BT_GATT_CHARACTERISTIC(&ble_t1_value_uuid.uuid,
 			       BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE,
 			       BT_GATT_PERM_READ | BT_GATT_PERM_WRITE,
 			       read_gatt_value, write_gatt_value, NULL),
+	BT_GATT_CHARACTERISTIC(&ble_t1_notify_uuid.uuid,
+			       BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
+			       BT_GATT_PERM_READ,
+			       read_notify_counter, NULL, NULL),
+	BT_GATT_CCC(notify_ccc_changed,
+		    BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
 );
+
+static void notify_work_handler(struct k_work *work)
+{
+	uint32_t counter_le;
+	int err;
+
+	ARG_UNUSED(work);
+
+	if (!notify_enabled) {
+		return;
+	}
+
+	notify_counter++;
+	counter_le = sys_cpu_to_le32(notify_counter);
+
+	err = bt_gatt_notify(NULL,
+			     &ble_t1_service.attrs[NOTIFY_VALUE_ATTR_INDEX],
+			     &counter_le, sizeof(counter_le));
+	if (err) {
+		printk("Notification failed (err %d)\n", err);
+	} else {
+		printk("Notification counter=%u\n", (unsigned int)notify_counter);
+	}
+
+	if (notify_enabled) {
+		(void)k_work_reschedule(&notify_work, NOTIFY_INTERVAL);
+	}
+}
 
 static int start_advertising(void);
 
@@ -92,6 +162,9 @@ static void connected(struct bt_conn *conn, uint8_t err)
 static void disconnected(struct bt_conn *conn, uint8_t reason)
 {
 	ARG_UNUSED(conn);
+
+	notify_enabled = false;
+	(void)k_work_cancel_delayable(&notify_work);
 	printk("Disconnected (reason 0x%02x)\n", reason);
 }
 
@@ -119,7 +192,7 @@ static const struct bt_data ad[] = {
 	BT_DATA_BYTES(BT_DATA_MANUFACTURER_DATA,
 		      0xFF, 0xFF, /* test company identifier */
 		      0x42, 0x54, 0x31, /* "BT1" */
-		      0x03), /* experiment version */
+		      0x04), /* experiment version */
 };
 
 static const struct bt_data sd[] = {
@@ -165,6 +238,8 @@ int main(void)
 		printk("LED PWM device is not ready\n");
 		return 0;
 	}
+
+	k_work_init_delayable(&notify_work, notify_work_handler);
 
 	if (start_ble_advertising() != 0) {
 		return 0;
